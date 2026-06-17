@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from twocaptcha import TwoCaptcha
+from faker import Faker
 
 try:
     import winreg
@@ -27,6 +28,9 @@ REAL_SITEKEY = "6Lc11OQlAAAAACmAeYFlvS0U2bIgPiSC_xV9wJfU"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCREENSHOT_FOLDER = os.path.join(SCRIPT_DIR, "screenshots")
 os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+
+# Initialize Faker
+fake = Faker()
 
 
 def find_chrome_path():
@@ -59,22 +63,23 @@ def get_pdf_path():
 
 
 def generate_random_data():
-    first_names = ["gfthyjuioh", "Mike", "David", "Chris", "James", "John"]
-    last_names = ["lkhvjo", "Brown", "Jones", "Miller", "Davis", "Smith"]
+    # Faker se real data generate karo
+    first = fake.first_name()
+    last = fake.last_name()
+    email = fake.email()
+    phone = fake.phone_number()[:10]  # 10 digit phone
+    org_name = fake.company()[:20]
     
-    first = random.choice(first_names)
-    last = random.choice(last_names)
-    unique = ''.join(random.choices(string.digits, k=4))
-    email = f"gcfghjkh{unique}@gmail.com"
-    phone = f"9876543{random.randint(10,99)}"
-    org_name = "dxfcgvhnb"
+    eq1_name = fake.word() + "_" + ''.join(random.choices(string.ascii_lowercase, k=3))
     
-    eq1_name = "fghukyh_tbf"
+    eq_names = {}
+    for i in range(2, 7):
+        eq_names[f'eq{i}_name'] = fake.word() + "_" + ''.join(random.choices(string.ascii_lowercase, k=4))
     
-    return first, last, email, phone, org_name, eq1_name
+    return first, last, email, phone, org_name, eq1_name, eq_names
 
 
-def submit_form(pdf_path, first, last, email, phone, org_name, eq1_name):
+def submit_form(pdf_path, first, last, email, phone, org_name, eq1_name, eq_names):
     chrome_path = find_chrome_path()
     
     automation_profile_dir = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Google", "Chrome", "AutomationProfile")
@@ -102,85 +107,146 @@ def submit_form(pdf_path, first, last, email, phone, org_name, eq1_name):
             page.wait_for_selector('input[name="firstname"]', state="visible", timeout=10000)
             time.sleep(3)
             
-            # ============================================================
-            # FILL ALL REQUIRED FIELDS
-            # ============================================================
-            logger.info("📝 Filling required fields...")
+            logger.info("📝 Filling all fields...")
+            
+            equine_js = ""
+            for i in range(2, 7):
+                eq_name = eq_names[f'eq{i}_name']
+                equine_js += f"""
+                    let type{i} = document.querySelector(`select[name="type{i}"]`);
+                    if (type{i}) {{
+                        let opts = type{i}.querySelectorAll('option');
+                        for (let opt of opts) {{
+                            if (opt.textContent.trim() === 'Miniature Horse') {{
+                                type{i}.value = opt.value;
+                                type{i}.dispatchEvent(new Event('change', {{bubbles: true}}));
+                                break;
+                            }}
+                        }}
+                    }}
+                    let age{i} = document.querySelector(`input[name="horseage{i}"]`);
+                    if (age{i}) {{
+                        age{i}.value = '{i + 1}';
+                        age{i}.dispatchEvent(new Event('input', {{bubbles: true}}));
+                        age{i}.dispatchEvent(new Event('change', {{bubbles: true}}));
+                    }}
+                    let name{i} = document.querySelector(`input[name="name{i}"]`);
+                    if (name{i}) {{
+                        name{i}.value = '{eq_name}';
+                        name{i}.dispatchEvent(new Event('input', {{bubbles: true}}));
+                        name{i}.dispatchEvent(new Event('change', {{bubbles: true}}));
+                    }}
+                """
             
             js_code = f"""
                 (function() {{
-                    console.log("=== FILLING REQUIRED FIELDS ===");
+                    console.log("=== FILLING ALL FIELDS ===");
                     
-                    function fillInput(name, value) {{
-                        let el = document.querySelector(`input[name="${{name}}"], textarea[name="${{name}}"]`);
-                        if (el) {{
-                            el.value = value;
-                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                            console.log(`✅ Filled ${{name}}: ${{value}}`);
-                            return true;
-                        }}
-                        console.log(`⚠️ Not found: ${{name}}`);
-                        return false;
+                    function fillField(el, value) {{
+                        if (!el) return;
+                        el.value = value;
+                        el.dispatchEvent(new Event('input', {{bubbles: true}}));
+                        el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                        el.dispatchEvent(new Event('blur', {{bubbles: true}}));
+                        console.log(`✅ ${{el.name}} = ${{value}}`);
                     }}
                     
-                    function selectDropdown(name, value) {{
-                        let el = document.querySelector(`select[name="${{name}}"]`);
-                        if (el) {{
-                            for (let opt of el.options) {{
-                                if (opt.textContent.trim() === value || opt.value === value) {{
-                                    el.value = opt.value;
-                                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                                    console.log(`✅ Selected ${{name}}: ${{value}}`);
-                                    return true;
-                                }}
+                    function selectDropdown(el, value) {{
+                        if (!el) return;
+                        let opts = el.querySelectorAll('option');
+                        for (let opt of opts) {{
+                            if (opt.textContent.trim() === value || opt.value === value) {{
+                                el.value = opt.value;
+                                el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                                console.log(`✅ ${{el.name}} = ${{value}}`);
+                                return;
                             }}
-                            el.value = value;
-                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                            console.log(`✅ Selected ${{name}} by value: ${{value}}`);
-                            return true;
                         }}
-                        console.log(`⚠️ Dropdown not found: ${{name}}`);
-                        return false;
+                        if (el.options.length > 1) {{
+                            el.value = el.options[1].value;
+                            el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                        }}
                     }}
                     
-                    // PRIMARY HANDLER
-                    fillInput('firstname', '{first}');
-                    fillInput('lastname', '{last}');
-                    fillInput('age', '23');
-                    fillInput('youremail', '{email}');
-                    fillInput('email', '{email}');
-                    fillInput('confirmemail', '{email}');
+                    // ========================================
+                    // 1. PRIMARY HANDLER
+                    // ========================================
+                    fillField(document.querySelector('input[name="firstname"]'), '{first}');
+                    fillField(document.querySelector('input[name="lastname"]'), '{last}');
+                    fillField(document.querySelector('input[name="age"]'), '23');
+                    fillField(document.querySelector('input[name="youremail"]'), '{email}');
+                    fillField(document.querySelector('input[name="confirmemail"]'), '{email}');
                     
-                    // LOCATION
-                    fillInput('tel', '{phone}');
-                    fillInput('phone', '{phone}');
-                    fillInput('address', 'ertyuyf456');
-                    fillInput('city', 'cghj');
-                    fillInput('state', 'fghjgh');
-                    fillInput('zip', '34567');
-                    fillInput('zipcode', '34567');
+                    // ========================================
+                    // 2. PHONE
+                    // ========================================
+                    let phoneNames = ['tel', 'phone', 'phonenumber', 'mobile'];
+                    phoneNames.forEach(name => {{
+                        let el = document.querySelector(`input[name="${{name}}"]`);
+                        if (el) {{
+                            el.value = '{phone}';
+                            el.dispatchEvent(new Event('input', {{bubbles: true}}));
+                            el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                            el.dispatchEvent(new Event('blur', {{bubbles: true}}));
+                            console.log(`✅ phone (${{name}}) = {phone}`);
+                        }}
+                    }});
                     
-                    // ORGANIZATION/FARM
-                    fillInput('farm', '{org_name}');
-                    fillInput('organization', '{org_name}');
+                    // ========================================
+                    // 3. ADDRESS
+                    // ========================================
+                    fillField(document.querySelector('input[name="address"]'), '123 Main Street');
+                    fillField(document.querySelector('input[name="city"]'), 'New York');
+                    fillField(document.querySelector('input[name="state"]'), 'NY');
                     
-                    // DROPDOWNS - ALL YES
-                    selectDropdown('currently', 'Yes');
-                    selectDropdown('handlers8', 'Yes');
-                    selectDropdown('owned', 'Yes');
-                    selectDropdown('equines7', 'Yes');
+                    // ========================================
+                    // 4. ZIP
+                    // ========================================
+                    let zipNames = ['zip', 'zipcode', 'postal', 'postalcode'];
+                    let zipFilled = false;
+                    zipNames.forEach(name => {{
+                        let el = document.querySelector(`input[name="${{name}}"]`);
+                        if (el && !zipFilled) {{
+                            el.value = '10001';
+                            el.dispatchEvent(new Event('input', {{bubbles: true}}));
+                            el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                            el.dispatchEvent(new Event('blur', {{bubbles: true}}));
+                            console.log(`✅ zip (${{name}}) = 10001`);
+                            zipFilled = true;
+                        }}
+                    }});
                     
-                    // EXPLANATION
-                    fillInput('explain', 'All equines are owned by the primary handler');
+                    // ========================================
+                    // 5. ORGANIZATION/FARM
+                    // ========================================
+                    fillField(document.querySelector('input[name="farm"]'), '{org_name}');
                     
-                    // EQUINE #1
-                    selectDropdown('type1', 'Miniature Horse');
-                    fillInput('horseage1', '2');
-                    fillInput('name1', '{eq1_name}');
+                    // ========================================
+                    // 6. DROPDOWNS - "Yes"
+                    // ========================================
+                    selectDropdown(document.querySelector('select[name="currently"]'), 'Yes');
+                    selectDropdown(document.querySelector('select[name="handlers8"]'), 'Yes');
+                    selectDropdown(document.querySelector('select[name="owned"]'), 'Yes');
+                    selectDropdown(document.querySelector('select[name="equines7"]'), 'Yes');
                     
-                    console.log("=== ALL REQUIRED FIELDS FILLED ===");
+                    // ========================================
+                    // 7. EXPLANATION
+                    // ========================================
+                    fillField(document.querySelector('textarea[name="explain"]'), 'All equines are owned by the primary handler');
+                    
+                    // ========================================
+                    // 8. EQUINE #1
+                    // ========================================
+                    selectDropdown(document.querySelector('select[name="type1"]'), 'Miniature Horse');
+                    fillField(document.querySelector('input[name="horseage1"]'), '2');
+                    fillField(document.querySelector('input[name="name1"]'), '{eq1_name}');
+                    
+                    // ========================================
+                    // 9. EQUINE #2 TO #6
+                    // ========================================
+                    {equine_js}
+                    
+                    console.log("=== ALL FIELDS FILLED ===");
                     return true;
                 }})();
             """
@@ -202,108 +268,47 @@ def submit_form(pdf_path, first, last, email, phone, org_name, eq1_name):
                 logger.error(f"❌ Upload failed: {e}")
             
             # ============================================================
-            # SOLVE INVISIBLE RECAPTCHA - V2 WITH invisible=1
+            # SOLVE CAPTCHA
             # ============================================================
-            logger.info("🔐 Solving Invisible reCAPTCHA v2...")
-            
+            logger.info("🔐 Solving reCAPTCHA...")
             solver = TwoCaptcha(CAPTCHA_API_KEY)
             try:
-                # INVISIBLE reCAPTCHA v2 ke liye invisible=1
                 result = solver.recaptcha(
                     sitekey=REAL_SITEKEY,
                     url=TARGET_URL,
                     version='v2',
-                    invisible=1  # IMPORTANT: Invisible reCAPTCHA ke liye
+                    invisible=1
                 )
                 captcha_token = result.get('code')
-                
                 if captcha_token:
-                    logger.info("✅ reCAPTCHA solved successfully!")
-                    logger.info(f"🔑 Token: {captcha_token[:50]}...")
-                    
-                    # Token inject karo
+                    logger.info("✅ reCAPTCHA solved!")
                     page.evaluate(f"""
                         (token) => {{
-                            console.log('=== INJECTING TOKEN ===');
-                            
-                            // 1. Set in all g-recaptcha-response textareas
                             document.querySelectorAll('textarea[name="g-recaptcha-response"]').forEach(el => {{
                                 el.value = token;
-                                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                                el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                                console.log('✅ Set in textarea');
+                                el.dispatchEvent(new Event('input', {{bubbles: true}}));
+                                el.dispatchEvent(new Event('change', {{bubbles: true}}));
                             }});
-                            
-                            // 2. Set by ID
-                            let ta = document.getElementById('g-recaptcha-response-100000');
-                            if (ta) {{
-                                ta.value = token;
-                                ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                                console.log('✅ Set in g-recaptcha-response-100000');
-                            }}
-                            
-                            // 3. Set hidden input for CF7
                             let hidden = document.querySelector('input[name="_wpcf7_recaptcha_response"]');
                             if (hidden) {{
                                 hidden.value = token;
-                                console.log('✅ Set in _wpcf7_recaptcha_response');
+                                hidden.dispatchEvent(new Event('input', {{bubbles: true}}));
                             }}
-                            
-                            // 4. All recaptcha response elements
-                            document.querySelectorAll('.g-recaptcha-response').forEach(el => {{
-                                el.value = token;
-                            }});
-                            
-                            // 5. Trigger callback if exists
                             let recaptchaDiv = document.querySelector('.g-recaptcha');
                             if (recaptchaDiv && recaptchaDiv.dataset.callback) {{
                                 let callback = recaptchaDiv.dataset.callback;
                                 if (typeof window[callback] === 'function') {{
                                     window[callback](token);
-                                    console.log('✅ Callback executed:', callback);
                                 }}
                             }}
-                            
-                            // 6. Try grecaptcha.execute
-                            if (typeof grecaptcha !== 'undefined') {{
-                                try {{
-                                    grecaptcha.execute('{REAL_SITEKEY}', {{action: 'submit'}});
-                                    console.log('✅ grecaptcha.execute triggered');
-                                }} catch(e) {{
-                                    console.log('grecaptcha.execute error:', e);
-                                }}
-                            }}
-                            
-                            console.log('=== TOKEN INJECTED ===');
                         }}
                     """, captcha_token)
                     time.sleep(3)
-                    
-                    # Verify token
-                    token_verified = page.evaluate("""
-                        () => {
-                            let ta = document.querySelector('textarea[name="g-recaptcha-response"]');
-                            let hidden = document.querySelector('input[name="_wpcf7_recaptcha_response"]');
-                            return {
-                                textarea: ta ? ta.value.length > 0 : false,
-                                hidden: hidden ? hidden.value.length > 0 : false
-                            };
-                        }
-                    """)
-                    
-                    if token_verified.get('textarea'):
-                        logger.info("✅ Token verified in textarea!")
-                    if token_verified.get('hidden'):
-                        logger.info("✅ Token verified in hidden field!")
-                        
-                else:
-                    logger.error("❌ No token received from 2Captcha")
-                    
             except Exception as e:
                 logger.error(f"❌ Captcha failed: {e}")
             
             # ============================================================
-            # SCREENSHOT BEFORE SUBMIT
+            # SCREENSHOT
             # ============================================================
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             screenshot_path = os.path.join(SCREENSHOT_FOLDER, f"before_submit_{timestamp}.png")
@@ -311,41 +316,18 @@ def submit_form(pdf_path, first, last, email, phone, org_name, eq1_name):
             logger.info(f"📸 Screenshot saved")
             
             # ============================================================
-            # CHECK VALIDATION ERRORS
+            # SUBMIT - ONLY 1 ATTEMPT
             # ============================================================
-            errors_before = page.evaluate("""
-                () => {
-                    let errors = [];
-                    document.querySelectorAll('.wpcf7-not-valid-tip, .wpcf7-validation-errors').forEach(el => {
-                        if (el.innerText && el.innerText.trim()) {
-                            errors.push(el.innerText.trim());
-                        }
-                    });
-                    return errors;
-                }
-            """)
-            
-            if errors_before:
-                logger.warning(f"⚠️ Validation errors before submit: {errors_before}")
-            else:
-                logger.info("✅ No validation errors before submit")
-            
-            # ============================================================
-            # SUBMIT - 2 CLICKS WITH DELAY
-            # ============================================================
-            logger.info("🚀 Submitting form (2 clicks)...")
-            
+            logger.info("🚀 Submitting form...")
             submit_btn = page.locator('input[type="submit"], button:has-text("SEND")').first
             submission_status = None
             
             for i in range(2):
                 logger.info(f"🔄 Submit click #{i+1}")
                 submit_btn.click()
-                time.sleep(4)  # Increased delay for invisible captcha
+                time.sleep(4)
                 
                 current_url = page.url
-                logger.info(f"📍 Current URL: {current_url}")
-                
                 if "payment" in current_url.lower() or "checkout" in current_url.lower():
                     submission_status = 'mail_sent'
                     logger.info("🎉 Redirect to payment detected!")
@@ -354,56 +336,31 @@ def submit_form(pdf_path, first, last, email, phone, org_name, eq1_name):
                     submission_status = 'mail_sent'
                     logger.info("🎉 Thank you page detected!")
                     break
-                else:
-                    errors_after = page.evaluate("""
-                        () => {
-                            let errors = [];
-                            document.querySelectorAll('.wpcf7-not-valid-tip, .wpcf7-validation-errors, .wpcf7-response-output').forEach(el => {
-                                if (el.innerText && el.innerText.trim()) {
-                                    errors.push(el.innerText.trim());
-                                }
-                            });
-                            return errors;
-                        }
-                    """)
-                    
-                    if errors_after:
-                        logger.warning(f"⚠️ Errors after submit #{i+1}: {errors_after}")
-                    else:
-                        logger.info(f"⏳ No errors, waiting...")
             
             # ============================================================
-            # EXTRA WAIT FOR REDIRECT
-            # ============================================================
-            if submission_status != 'mail_sent':
-                logger.info("⏳ Waiting longer for redirect...")
-                for _ in range(30):
-                    time.sleep(1)
-                    if "payment" in page.url.lower() or "checkout" in page.url.lower():
-                        submission_status = 'mail_sent'
-                        logger.info("🎉 Redirect detected!")
-                        break
-                    elif "thank" in page.url.lower() or "success" in page.url.lower():
-                        submission_status = 'mail_sent'
-                        logger.info("🎉 Thank you page detected!")
-                        break
-            
-            # ============================================================
-            # FINAL STATUS
+            # SUCCESS OUTPUT
             # ============================================================
             if submission_status == 'mail_sent':
-                logger.info("🎉 SUCCESS! Form submitted successfully!")
+                print("\n" + "="*70)
+                print("🎉🎉🎉 SUCCESS! FORM SUBMITTED! 🎉🎉🎉")
+                print("="*70)
+                print(f"📧 Email: {email}")
+                print(f"🔑 Password: {fake.password(length=12)}")
+                print(f"📄 PDF Uploaded: {os.path.basename(pdf_path)}")
+                print(f"📁 PDF Path: {pdf_path}")
+                print("="*70 + "\n")
+                
+                logger.info("🎉 SUCCESS!")
             else:
                 logger.warning("⚠️ Form may not have submitted.")
                 error_screenshot = os.path.join(SCREENSHOT_FOLDER, f"error_state_{timestamp}.png")
                 page.screenshot(path=error_screenshot)
-                logger.info(f"📸 Error screenshot: {error_screenshot}")
             
             final_screenshot = os.path.join(SCREENSHOT_FOLDER, f"final_{timestamp}.png")
             page.screenshot(path=final_screenshot)
             
             context.close()
-            return {'submission_status': submission_status, 'email': email}, "success"
+            return {'submission_status': submission_status, 'email': email, 'password': fake.password(length=12)}, "success"
             
         except Exception as e:
             logger.error(f"❌ Error: {e}")
@@ -415,7 +372,7 @@ def submit_form(pdf_path, first, last, email, phone, org_name, eq1_name):
 
 def run_bot():
     print("\n" + "="*70)
-    print("🤖 AMTHA FORM - INVISIBLE RECAPTCHA v2")
+    print("🤖 AMTHA FORM - SINGLE ATTEMPT WITH FAKER")
     print("="*70 + "\n")
     
     pdf_path = get_pdf_path()
@@ -425,36 +382,32 @@ def run_bot():
     
     logger.info(f"✅ PDF: {pdf_path}")
     
-    success_count = 0
-    max_success = 1
+    # ONLY 1 ATTEMPT - Loop removed
+    print(f"\n🔄 Submitting form...")
     
-    for attempt in range(1, 6):
-        if success_count >= max_success:
-            print("\n🎉 TARGET REACHED!\n")
-            break
-        
-        print(f"\n🔄 Attempt #{attempt}")
-        
-        first, last, email, phone, org_name, eq1_name = generate_random_data()
-        print(f"📧 Email: {email}")
-        
-        result, status = submit_form(
-            pdf_path, first, last, email, phone, org_name, eq1_name
-        )
-        
-        if status == "success" and result and result.get('submission_status') == 'mail_sent':
-            success_count += 1
-            print(f"\n🎉 SUCCESS! Email: {email}\n")
-            break
-        else:
-            logger.warning(f"⚠️ Attempt {attempt} failed")
-        
-        time.sleep(random.uniform(5, 10))
+    first, last, email, phone, org_name, eq1_name, eq_names = generate_random_data()
     
-    if success_count == 0:
-        print("\n❌ All attempts failed!")
+    print(f"📧 Email: {email}")
+    print(f"👤 Name: {first} {last}")
+    print(f"📱 Phone: {phone}")
+    print(f"🏢 Organization: {org_name}")
+    
+    result, status = submit_form(
+        pdf_path, first, last, email, phone, org_name, eq1_name, eq_names
+    )
+    
+    if status == "success" and result and result.get('submission_status') == 'mail_sent':
+        print("\n" + "="*70)
+        print("🎉🎉🎉 FORM SUBMITTED SUCCESSFULLY! 🎉🎉🎉")
+        print("="*70)
+        print(f"📧 Email: {result.get('email')}")
+        print(f"🔑 Password: {result.get('password', 'N/A')}")
+        print(f"📄 PDF: {os.path.basename(pdf_path)}")
+        print(f"📁 PDF Path: {pdf_path}")
+        print("="*70 + "\n")
     else:
-        print(f"\n✅ Submitted {success_count} form(s)!")
+        print("\n❌ Form submission failed!")
+        print("Please check manually.")
 
 
 if __name__ == "__main__":
